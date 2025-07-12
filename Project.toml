@@ -1,0 +1,14 @@
+name = "GraphsOfConvexSets"
+uuid = "823ad9d2-5d47-4587-a0bc-029103bd504c"
+version = "0.1.0"
+
+[deps]
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+
+[compat]
+Graphs = "1"
+LinearAlgebra = "1.10"
+MathOptInterface = "1.42.0"
+julia = "1.10"
