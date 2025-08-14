@@ -5,6 +5,9 @@ using LinearAlgebra
 const VertexOrEdgeType = Union{Int,Graphs.Edge{Int}}
 
 struct Problem <: MOI.AbstractModelAttribute end
+struct ObjectiveVertexOrEdge <: MOI.AbstractModelAttribute
+    vertex_or_edge::Union{Int, Tuple{Int, Int}}
+end
 struct VariableVertex <: MOI.AbstractVariableAttribute end
 struct VertexOrEdge <: MOI.AbstractConstraintAttribute end
 
@@ -39,13 +42,12 @@ function MOI.empty!(model::Optimizer)
     empty!(model.z)
     return
 end
+
 MOI.optimize!(model::Optimizer) = MOI.optimize!(model.inner)
-function MOI.supports(model::Optimizer, attr::MOI.AnyAttribute)
-    return MOI.supports(model.inner, attr)
-end
-function MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.VectorAffineFunction}, S::Type{<:MOI.AbstractVectorSet})
-    return MOI.supports_constraint(model.inner, F, S)
-end
+
+MOI.supports(model::Optimizer, attr::MOI.AnyAttribute) = MOI.supports(model.inner, attr)
+MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.VectorAffineFunction}, S::Type{<:MOI.AbstractVectorSet}) = MOI.supports_constraint(model.inner, F, S)
+
 
 function _mult_subs(model, xterm::MOI.ScalarAffineTerm, ineq::MOI.ScalarAffineFunction)
     result = (xterm.coefficient * ineq.constant) * xterm.variable
@@ -57,11 +59,8 @@ function _mult_subs(model, xterm::MOI.ScalarAffineTerm, ineq::MOI.ScalarAffineFu
     end
     return result
 end
-
-function _mult_subs(model, term::MOI.ScalarAffineTerm, ineq::MOI.VariableIndex)
-    return term.coefficient * model.z[(term.variable, ineq)]
-end
-
+_mult_subs(model, term::MOI.ScalarAffineTerm, ineq::MOI.VariableIndex) = term.coefficient * model.z[(term.variable, ineq)]
+_mult_subs(model::Optimizer, variableIndex::MOI.VariableIndex, ineq) = model.z[(variableIndex, ineq)]
 function _mult_subs(model::Optimizer, affine::MOI.VectorAffineFunction{T}, ineq) where {T}
     result = MOI.Utilities.zero_with_output_dimension(MOI.VectorAffineFunction{T}, MOI.output_dimension(affine))
     for term in affine.terms
@@ -75,39 +74,44 @@ function _mult_subs(model::Optimizer, affine::MOI.VectorAffineFunction{T}, ineq)
     return result
 end
 
-function _build_graph(graph::Graphs.DiGraph, src::MOI.ModelLike, ::Type{F}, ::Type{S}) where {F,S}
-    for ci in MOI.get(src, MOI.ListOfConstraintIndices{F,S}())
-        vertex_or_edge = MOI.get(src, VertexOrEdge(), ci)
-        if vertex_or_edge isa Tuple{Int,Int} # It's an edge
-            u, v = vertex_or_edge
-            Graphs.add_edge!(graph, u, v)
-        end
-    end
-end
-
-function _check(_, ci, _, ::MOI.VariableIndex, ::Nothing)
-    error("Constraint `$ci` is not assigned to any vertex or edge. You should set its `VertexOrEdge` attribute.")
-end
-
-function _check(model, ci, func, vi::MOI.VariableIndex, vertex::Int)
+# Check expressions contains only variables of the vertices or edges they are associated to
+_check(_, e, _, ::MOI.VariableIndex, ::Nothing) = error("Expression `$e` is not assigned to any vertex or edge. You should set its `VertexOrEdge` attribute if it is a constraint, or its `ObjectiveVertexOrEdge(*)` attribute if it is an objective function, where * is the vertex or edge identification.")
+function _check(model, e, func, vi::MOI.VariableIndex, vertex::Int)
     variable_vertex = model.variable_vertex[vi]
     if variable_vertex != vertex
-        error("In constraint `$ci` of the vertex `$vertex`, the variable `$vi` of the function `$func` belongs to a different vertex `$variable_vertex`.")
+        error("In expression `$e` of the vertex `$vertex`, the variable `$vi` of the function `$func` belongs to a different vertex `$variable_vertex`.")
     end
 end
-
-function _check(model, ci, func, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
+function _check(model, e, func, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
     variable_vertex = model.variable_vertex[vi]
     if variable_vertex != edge[1] && variable_vertex != edge[2]
-        error("In constraint `$ci` of the edge `$edge`, the variable `$vi` of the function `$func` belongs to vertex `$variable_vertex` which is neither the source nor destination of the edge.")
+        error("In expression `$e` of the edge `$edge`, the variable `$vi` of the function `$func` belongs to vertex `$variable_vertex` which is neither the source nor destination of the edge.")
+    end
+end
+function _check(model, e, func::MOI.VectorAffineFunction, vertex_or_edge)
+    for term in func.terms
+        _check(model, e, func, term.scalar_term.variable, vertex_or_edge)
+    end
+end
+function _check(model, e, vi::MOI.VariableIndex, vertex::Int)
+    variable_vertex = model.variable_vertex[vi]
+    if variable_vertex != vertex
+        error("In expression `$e` of the vertex `$vertex`, the variable `$vi` belongs to a different vertex `$variable_vertex`.")
+    end
+end
+function _check(model, e, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
+    variable_vertex = model.variable_vertex[vi]
+    if variable_vertex != edge[1] && variable_vertex != edge[2]
+        error("In expression `$e` of the edge `$edge`, the variable `$vi` belongs to vertex `$variable_vertex` which is neither the source nor destination of the edge.")
     end
 end
 
-function _check(model, ci, func::MOI.VectorAffineFunction, vertex_or_edge)
-    for term in func.terms
-        _check(model, ci, func, term.scalar_term.variable, vertex_or_edge)
-    end
-end
+filter_attributes(attr) = true
+filter_attributes(attr::VariableVertex) = false
+filter_attributes(attr::VertexOrEdge) = false
+filter_attributes(attr::Problem) = false
+filter_attributes(attr::ObjectiveVertexOrEdge) = false
+filter_attributes(attr::MOI.ObjectiveFunction) = false
 
 # Function barrier to work around the type instability when getting `F` and `S`
 function _add_constraints(dest::Optimizer, src::MOI.ModelLike, index_map, ::Type{F}, ::Type{S}) where {F,S}
@@ -144,12 +148,38 @@ function _add_constraints(dest::Optimizer, src::MOI.ModelLike, index_map, ::Type
     MOI.Utilities.pass_attributes(dest.inner, filtered, index_map, cis)
 end
 
+
+function _set_objective(dest::Optimizer, src::MOI.ModelLike, index_map)
+    result = MOI.Utilities.zero(MOI.ScalarAffineFunction{Float64})
+    for vertex_or_edge in [collect(Graphs.vertices(dest.graph)); collect(Graphs.edges(dest.graph))]
+        if vertex_or_edge isa Graphs.Edge{Int} v_e = (Graphs.src(vertex_or_edge), Graphs.dst(vertex_or_edge)) else v_e = vertex_or_edge end
+        func = MOI.Utilities.map_indices(index_map, MOI.get(src, ObjectiveVertexOrEdge(v_e)))
+        if !isnothing(func)
+            _check(dest, ObjectiveVertexOrEdge(v_e), func, v_e)
+            MOI.Utilities.operate!(+, Float64, result, _mult_subs(dest, func, dest.y[vertex_or_edge]))
+        end
+    end
+    MOI.set(dest.inner, MOI.ObjectiveFunction{MOI.ScalarAffineFunction{Float64}}(), result)
+end
+
+
+
 struct ShortestPathProblem
     source::Int
     target::Int
 end
 
 MOI.Utilities.map_indices(::Function, p::ShortestPathProblem) = p
+
+function _build_graph(graph::Graphs.DiGraph, src::MOI.ModelLike, ::Type{F}, ::Type{S}) where {F,S}
+    for ci in MOI.get(src, MOI.ListOfConstraintIndices{F,S}())
+        vertex_or_edge = MOI.get(src, VertexOrEdge(), ci)
+        if vertex_or_edge isa Tuple{Int,Int} # It's an edge
+            u, v = vertex_or_edge
+            Graphs.add_edge!(graph, u, v)
+        end
+    end
+end
 
 function _constrain_admissible_subgraphs(model::Optimizer, spp::ShortestPathProblem)
     for v in Graphs.vertices(model.graph)
@@ -184,11 +214,6 @@ function _constrain_admissible_subgraphs(model::Optimizer, spp::ShortestPathProb
         )
     end
 end
-
-filter_attributes(attr) = true
-filter_attributes(attr::VariableVertex) = false
-filter_attributes(attr::VertexOrEdge) = false
-filter_attributes(attr::Problem) = false
 
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     MOI.empty!(dest)
@@ -232,6 +257,7 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
     filtered = MOI.Utilities.ModelFilter(filter_attributes, src)
     MOI.Utilities.pass_attributes(dest.inner, filtered, index_map, vis)
     MOI.Utilities.pass_attributes(dest.inner, filtered, index_map)
+    _set_objective(dest, src, index_map)
     for (F, S) in MOI.get(src, MOI.ListOfConstraintTypesPresent())
         _add_constraints(dest, src, index_map, F, S)
     end
@@ -241,6 +267,7 @@ end
 
 MOI.get(model::Optimizer, attr::MOI.AbstractModelAttribute) = MOI.get(model.inner, attr)
 MOI.get(model::Optimizer, attr::MOI.AbstractVariableAttribute, v) = MOI.get(model.inner, attr, v)
+MOI.get(model::Optimizer, attr::MOI.AbstractConstraintAttribute, c) = MOI.get(model.inner, attr, c)
 
 struct SubGraph <: MOI.AbstractModelAttribute end
 MOI.is_set_by_optimize(::SubGraph) = true
