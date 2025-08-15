@@ -60,6 +60,14 @@ function _mult_subs(model, xterm::MOI.ScalarAffineTerm, ineq::MOI.ScalarAffineFu
 end
 _mult_subs(model, term::MOI.ScalarAffineTerm, ineq::MOI.VariableIndex) = term.coefficient * model.z[(term.variable, ineq)]
 _mult_subs(model::Optimizer, variableIndex::MOI.VariableIndex, ineq) = model.z[(variableIndex, ineq)]
+function _mult_subs(model::Optimizer, affine::MOI.ScalarAffineFunction{T}, ineq) where {T}
+    result = MOI.Utilities.zero(MOI.ScalarAffineFunction{T})
+    for term in affine.terms
+        scalar = _mult_subs(model, term, ineq)
+        MOI.Utilities.operate!(+, T, result, scalar)
+    end
+    MOI.Utilities.operate!(+, T, result, affine.constant * ineq)
+end
 function _mult_subs(model::Optimizer, affine::MOI.VectorAffineFunction{T}, ineq) where {T}
     result = MOI.Utilities.zero_with_output_dimension(MOI.VectorAffineFunction{T}, MOI.output_dimension(affine))
     for term in affine.terms
@@ -85,6 +93,11 @@ function _check(model, e, func, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
     variable_vertex_or_edge = model.variable_vertex_or_edge[vi]
     if variable_vertex_or_edge != edge[1] && variable_vertex_or_edge != edge[2] && variable_vertex_or_edge != Graphs.Edge(edge...)
         error("In expression `$e` of the edge `$Graphs.Edge(edge...)`, the variable `$vi` of the function `$func` belongs to vertex or edge `$variable_vertex_or_edge` which is neither the source nor destination of the edge, nor the edge.")
+    end
+end
+function _check(model, e, func::MOI.ScalarAffineFunction, vertex_or_edge)
+    for term in func.terms
+        _check(model, e, func, term.variable, vertex_or_edge)
     end
 end
 function _check(model, e, func::MOI.VectorAffineFunction, vertex_or_edge)
