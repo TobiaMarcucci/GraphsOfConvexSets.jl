@@ -63,7 +63,7 @@ for (src, dst) in edges
     # Cost of the edge
     cost = @variable(model)
     MOI.set(model, VariableVertexOrEdge(), cost, (src, dst))
-    MOI.set(model, ObjectiveVertexOrEdge((src, dst)), MOI.VariableIndex(cost))
+    set_vertex_or_edge_objective(model, (src, dst), cost)
 
     cons_ref = @constraint(model, [cost; x[dst, :] - x[src, :]] in SecondOrderCone())
     MOI.set(model, ConstraintVertexOrEdge(), cons_ref, (src, dst))

@@ -1,5 +1,7 @@
 import Graphs
 import MathOptInterface as MOI
+
+using JuMP
 using LinearAlgebra
 
 const VertexOrEdgeType = Union{Int,Graphs.Edge{Int}}
@@ -67,6 +69,7 @@ function _mult_subs(model::Optimizer, affine::MOI.ScalarAffineFunction{T}, ineq)
         MOI.Utilities.operate!(+, T, result, scalar)
     end
     MOI.Utilities.operate!(+, T, result, affine.constant * ineq)
+    return result
 end
 function _mult_subs(model::Optimizer, affine::MOI.VectorAffineFunction{T}, ineq) where {T}
     result = MOI.Utilities.zero_with_output_dimension(MOI.VectorAffineFunction{T}, MOI.output_dimension(affine))
@@ -160,6 +163,9 @@ function _add_constraints(dest::Optimizer, src::MOI.ModelLike, index_map, ::Type
     MOI.Utilities.pass_attributes(dest.inner, filtered, index_map, cis)
 end
 
+function set_vertex_or_edge_objective(model::Model, v_e::Union{Int, Tuple{Int, Int}}, func::Union{Number, AbstractVariableRef, GenericAffExpr})
+    MOI.set(model, ObjectiveVertexOrEdge(v_e), moi_function(func))
+end
 
 function _set_objective(dest::Optimizer, src::MOI.ModelLike, index_map)
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{Float64})
