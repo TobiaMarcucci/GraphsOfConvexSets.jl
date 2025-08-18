@@ -1,6 +1,6 @@
 function MOI.set(
     model::MOI.ModelLike,
-    attr::VertexOrEdge,
+    attr::ConstraintVertexOrEdge,
     bridge::MOI.Bridges.Constraint.VectorizeBridge,
     value,
 )
