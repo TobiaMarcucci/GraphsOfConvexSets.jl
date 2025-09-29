@@ -2,6 +2,7 @@ module GraphsOfConvexSets
 
 include("MOI_wrapper.jl")
 include("bridges.jl")
+include("graph_problems/problem_structures.jl")
 
 # Taken from JuMP.jl, exports all symbols not starting with `_`
 const _EXCLUDE_SYMBOLS = [Symbol(@__MODULE__), :eval, :include]

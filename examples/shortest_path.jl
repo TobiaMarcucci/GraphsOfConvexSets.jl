@@ -93,21 +93,14 @@ for edge in edges
     if Graphs.has_edge(sol, edge)
         v = [edge...]
         plot!(p, xv[v, 1], xv[v, 2], arrow = true, label = "", color = :grey, linewidth=2)
-        # Is there some way to verify the correctness of the solution (in particular the costs)?
-        # Since in formulation 5.8, if the cost is a variable x_v on a vertex, we may not have have x_v* = z_v*
-        # Indeed, the set to which x_v belong is {x | x ≥ 0} is unbounded, and his recession cone is {(x,y) | x ≥ 0, y ≥ 0}. Therefore, when y = 0, we may not have x = 0
-        # 5.8c gives for y_v = 0, (z_v*,0) ∈ hom(X_v) and (x_v* - z_v*) ∈ X_v. As we want to min z_v*, it will be set to 0, and we have x_v* ∈ X_v
-        #            for y_v = 1, z_v* ∈ X_v and (x_v* - z_v*, 0) ∈ X_v. And we may have that x_v* ≠ z_v* as long as x_v* ≥ z_v*
-
-        # If the cost is a variable x_e on an edge, no constraint ensure the equality between x_e* and z_e*
     end
 end
 
 scatter!(p, [C[:, 1]], [C[:, 2]], label = "", markerstrokewidth = 0, markersize = 3)
 
-for i in 1:5
-    plot!(p, [C[i, 1], xv[i, 1]], [C[i, 2], xv[i, 2]], label = "", linestyle = :dash, color = :lightgrey)
-    scatter!(p, [xv[i, 1]], [xv[i, 2]], label = "$i", markerstrokewidth=0)
+for v in filter(x -> Graphs.degree(sol,x) > 0, Graphs.vertices(sol))
+    plot!(p, [C[v, 1], xv[v, 1]], [C[v, 2], xv[v, 2]], label = "", linestyle = :dash, color = :lightgrey)
+    scatter!(p, [xv[v, 1]], [xv[v, 2]], label = "$v", markerstrokewidth=0)
 end
 
 p
