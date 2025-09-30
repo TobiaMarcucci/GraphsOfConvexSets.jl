@@ -83,7 +83,7 @@ end
 """
 Check expressions contain only variables of the vertices or edges they are associated to
 """
-_check(_, e, ::MOI.VariableIndex, ::Nothing) = error("Expression `$e` is not assigned to any vertex or edge. You should set its `ConstraintVertexOrEdge` attribute if it is a constraint, or its `ObjectiveVertexOrEdge(*)` attribute if it is an objective function, where * is the vertex or edge identification.")
+_check(_, e, ::MOI.VariableIndex, ::Nothing) = error("Expression `$e` is not assigned to any vertex or edge. You should set its `ConstraintVertexOrEdge` attribute if it is a constraint, or its `VertexOrEdgeObjective(*)` attribute if it is an objective function, where * is the vertex or edge identification.")
 
 function _check(model::Optimizer, e, vi::MOI.VariableIndex, vertex::Int)
     # Check if a variable is associated to a vertex
@@ -124,7 +124,7 @@ filter_attributes(attr) = true # Default method
 filter_attributes(attr::VariableVertexOrEdge) = false
 filter_attributes(attr::ConstraintVertexOrEdge) = false
 filter_attributes(attr::Problem) = false
-filter_attributes(attr::ObjectiveVertexOrEdge) = false
+filter_attributes(attr::VertexOrEdgeObjective) = false
 filter_attributes(attr::MOI.ObjectiveFunction) = false
 
 ###########################################################################################
@@ -175,7 +175,7 @@ end
 Function used by the user to set the objective of a vertex or edge
 """
 function set_vertex_or_edge_objective(model::Model, v_e::VertexOrEdgeType, func::Union{Number, AbstractVariableRef, GenericAffExpr})
-    MOI.set(model, ObjectiveVertexOrEdge(v_e), moi_function(func))
+    MOI.set(model, VertexOrEdgeObjective(v_e), moi_function(func))
 end
 
 """
@@ -186,9 +186,9 @@ function _set_objective(dest::Optimizer, src::MOI.ModelLike, index_map)
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{Float64})
     for vertex_or_edge in [collect(Graphs.vertices(dest.graph)); collect(Graphs.edges(dest.graph))]
         v_e = vertex_or_edge isa Int ? vertex_or_edge : (Graphs.src(vertex_or_edge), Graphs.dst(vertex_or_edge))
-        func = MOI.Utilities.map_indices(index_map, MOI.get(src, ObjectiveVertexOrEdge(v_e)))
+        func = MOI.Utilities.map_indices(index_map, MOI.get(src, VertexOrEdgeObjective(v_e)))
         if !isnothing(func)
-            _check(dest, ObjectiveVertexOrEdge(v_e), func, v_e)
+            _check(dest, VertexOrEdgeObjective(v_e), func, v_e)
             MOI.Utilities.operate!(+, Float64, result, _mult_subs(dest, func, dest.y[v_e]))
         end
     end

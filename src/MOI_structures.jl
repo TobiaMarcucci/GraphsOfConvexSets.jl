@@ -6,7 +6,7 @@ const VertexOrEdgeType = Union{Int,Tuple{Int,Int}}
 # Variables, Constraints and Model attributes
 struct VariableVertexOrEdge <: MOI.AbstractVariableAttribute end     # Associate to a variable its vertex or edge
 struct ConstraintVertexOrEdge <: MOI.AbstractConstraintAttribute end # Associate to a constraint its vertex or edge
-struct ObjectiveVertexOrEdge <: MOI.AbstractModelAttribute           # Associate to a vertex or edge an objective
+struct VertexOrEdgeObjective <: MOI.AbstractModelAttribute           # Associate to a vertex or edge an objective
     vertex_or_edge::VertexOrEdgeType
 end
 struct Problem <: MOI.AbstractModelAttribute end                     # Associate a problem to the model, e.g. SPP
