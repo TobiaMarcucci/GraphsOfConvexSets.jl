@@ -6,6 +6,7 @@ import MathOptInterface as MOI
 
 include("graph_problems/shortest_path.jl")
 include("MOI_structures.jl")
+include("graph_structures.jl")
 
 ###################################################################
 
@@ -290,4 +291,26 @@ function MOI.get(model::Optimizer, ::SubGraph)
         end
     end
     return graph
+end
+
+####################################################################################################
+
+function JuMP.add_variable(v::Vertex, var...)
+    var_ref = JuMP.add_variable(v.model, var...)
+    MOI.set(v.model, VariableVertexOrEdge(), var_ref, v.vertex)
+end
+
+function JuMP.add_constraint(v::Vertex, con)
+    con_ref = JuMP.add_constraint(v.model, con)
+    MOI.set(v.model, ConstraintVertexOrEdge(), con_ref, v.vertex)
+end
+
+function JuMP.add_variable(e::Edge, var)
+    var_ref = JuMP.add_variable(e.model, var)
+    MOI.set(e.model, VariableVertexOrEdge(), var_ref, e.edge)
+end
+
+function JuMP.add_constraint(e::Edge, con)
+    con_ref = JuMP.add_constraint(e.model, con)
+    MOI.set(e.model, ConstraintVertexOrEdge(), con_ref, e.edge)
 end
