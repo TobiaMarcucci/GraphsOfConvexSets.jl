@@ -1,5 +1,12 @@
 # GraphsOfConvexSets.jl
 
+| **Build Status** |
+|:----------------:|
+| [![Build Status][build-img]][build-url] |
+
+[build-img]: https://github.com/TobiaMarcucci/GraphsOfConvexSets.jl/actions/workflows/ci.yml/badge.svg?branch=master
+[build-url]: https://github.com/TobiaMarcucci/GraphsOfConvexSets.jl/actions?query=workflow%3ACI
+
 Julia implementation of search algorithms for graphs of convex sets.
 Based on the paper: "[Shortest Paths in Graphs of Convex Sets](https://arxiv.org/abs/2101.11565)" by Tobia Marcucci, Jack Umenberger, Pablo A. Parrilo, and Russ Tedrake.
 
