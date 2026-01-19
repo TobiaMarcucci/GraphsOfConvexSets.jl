@@ -1,0 +1,6 @@
+[deps]
+GraphsOfConvexSets = "823ad9d2-5d47-4587-a0bc-029103bd504c"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+GraphsOfConvexSets = {path = ".."}
