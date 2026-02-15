@@ -1,8 +1,12 @@
-include("problem_structures.jl")
 include("../MOI_structures.jl")
 
 import Graphs
 import MathOptInterface as MOI
+
+struct ShortestPathProblem
+    source::Int
+    target::Int
+end
 
 MOI.Utilities.map_indices(::Function, p::ShortestPathProblem) = p
 
