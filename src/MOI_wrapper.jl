@@ -1,12 +1,3 @@
-using LinearAlgebra
-using JuMP
-import Graphs
-import MathOptInterface as MOI
-
-include("graph_problems/shortest_path.jl")
-
-###################################################################
-
 const VertexOrEdgeType = Union{Int,Tuple{Int,Int}}
 
 # Variables, Constraints and Model attributes
@@ -38,8 +29,8 @@ mutable struct GCSOptimizer{O} <: MOI.AbstractOptimizer
     end
 end
 
-MOI.is_empty(model::Optimizer) = MOI.is_empty(model.inner) # Returns if the model is empty
-function MOI.empty!(model::Optimizer) # Empty the model
+MOI.is_empty(model::GCSOptimizer) = MOI.is_empty(model.inner) # Returns if the model is empty
+function MOI.empty!(model::GCSOptimizer) # Empty the model
     MOI.empty!(model.inner)
     model.graph = nothing
     empty!(model.variable_vertex_or_edge)
@@ -49,14 +40,14 @@ function MOI.empty!(model::Optimizer) # Empty the model
     return
 end
 
-MOI.supports(model::Optimizer, attr::MOI.AnyAttribute) = MOI.supports(model.inner, attr)
-MOI.supports_constraint(model::Optimizer, F::Type{<:MOI.VectorAffineFunction}, S::Type{<:MOI.AbstractVectorSet}) = MOI.supports_constraint(model.inner, F, S)
+MOI.supports(model::GCSOptimizer, attr::MOI.AnyAttribute) = MOI.supports(model.inner, attr)
+MOI.supports_constraint(model::GCSOptimizer, F::Type{<:MOI.VectorAffineFunction}, S::Type{<:MOI.AbstractVectorSet}) = MOI.supports_constraint(model.inner, F, S)
 
-MOI.get(model::Optimizer, attr::MOI.AbstractModelAttribute) = MOI.get(model.inner, attr)
-MOI.get(model::Optimizer, attr::MOI.AbstractVariableAttribute, v) = MOI.get(model.inner, attr, v)
-MOI.get(model::Optimizer, attr::MOI.AbstractConstraintAttribute, c) = MOI.get(model.inner, attr, c)
+MOI.get(model::GCSOptimizer, attr::MOI.AbstractModelAttribute) = MOI.get(model.inner, attr)
+MOI.get(model::GCSOptimizer, attr::MOI.AbstractVariableAttribute, v) = MOI.get(model.inner, attr, v)
+MOI.get(model::GCSOptimizer, attr::MOI.AbstractConstraintAttribute, c) = MOI.get(model.inner, attr, c)
 
-MOI.optimize!(model::Optimizer) = MOI.optimize!(model.inner)
+MOI.optimize!(model::GCSOptimizer) = MOI.optimize!(model.inner)
 
 ###################################################################
 
@@ -75,7 +66,7 @@ and that returns their product, substituting the following bilinear terms:
 
     - z_e y_v = z_e y_e = z_e
 """
-function _mult_subs(model::Optimizer, zterm::MOI.ScalarAffineTerm{T}, ineq::MOI.ScalarAffineFunction) where {T}
+function _mult_subs(model::GCSOptimizer, zterm::MOI.ScalarAffineTerm{T}, ineq::MOI.ScalarAffineFunction) where {T}
     # This method consider the case where the first affine function is scalar with one linear term of the kind a*z
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{T})
     for yterm in ineq.terms
@@ -88,9 +79,9 @@ function _mult_subs(model::Optimizer, zterm::MOI.ScalarAffineTerm{T}, ineq::MOI.
 end
 
 # This method consider the case where the first affine function is scalar with one linear term of the kind a*z, and the second linear function is just y_v or y_e.
-_mult_subs(model::Optimizer, term::MOI.ScalarAffineTerm, ineq::MOI.VariableIndex) = term.coefficient * (haskey(model.z_v_e, (term.variable, ineq)) ? model.z_v_e[(term.variable, ineq)] : term.variable)
+_mult_subs(model::GCSOptimizer, term::MOI.ScalarAffineTerm, ineq::MOI.VariableIndex) = term.coefficient * (haskey(model.z_v_e, (term.variable, ineq)) ? model.z_v_e[(term.variable, ineq)] : term.variable)
 
-function _mult_subs(model::Optimizer, variableIndex::MOI.VariableIndex, ineq::MOI.ScalarAffineFunction)
+function _mult_subs(model::GCSOptimizer, variableIndex::MOI.VariableIndex, ineq::MOI.ScalarAffineFunction)
     # This method consider the case where the first affine function is just z_v or z_e
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{Float64})
     for yterm in ineq.terms
@@ -102,9 +93,9 @@ function _mult_subs(model::Optimizer, variableIndex::MOI.VariableIndex, ineq::MO
 end
 
 # This method consider the case where the first affine function is just z_v or z_e, and the second linear function is just y_v or y_e.
-_mult_subs(model::Optimizer, variableIndex::MOI.VariableIndex, ineq::MOI.VariableIndex) = haskey(model.z_v_e, (variableIndex, ineq)) ? model.z_v_e[(variableIndex, ineq)] : variableIndex
+_mult_subs(model::GCSOptimizer, variableIndex::MOI.VariableIndex, ineq::MOI.VariableIndex) = haskey(model.z_v_e, (variableIndex, ineq)) ? model.z_v_e[(variableIndex, ineq)] : variableIndex
 
-function _mult_subs(model::Optimizer, affine::MOI.ScalarAffineFunction{T}, ineq) where {T}
+function _mult_subs(model::GCSOptimizer, affine::MOI.ScalarAffineFunction{T}, ineq) where {T}
     # This method handles a whole scalar affine function a*z + b, taking the terms one by one.
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{T})
     for term in affine.terms
@@ -115,7 +106,7 @@ function _mult_subs(model::Optimizer, affine::MOI.ScalarAffineFunction{T}, ineq)
     return result
 end
 
-function _mult_subs(model::Optimizer, affine::MOI.VectorAffineFunction{T}, ineq) where {T}
+function _mult_subs(model::GCSOptimizer, affine::MOI.VectorAffineFunction{T}, ineq) where {T}
     # This method handles a vector affine function Az + b, taking the terms of each scalar affine expression one by one.
     result = MOI.Utilities.zero_with_output_dimension(MOI.VectorAffineFunction{T}, MOI.output_dimension(affine))
     for term in affine.terms
@@ -136,7 +127,7 @@ Check expressions contain only variables of the vertices or edges they are assoc
 """
 _check(_, e, ::MOI.VariableIndex, ::Nothing) = error("Expression `$e` is not assigned to any vertex or edge. You should set its `ConstraintVertexOrEdge` attribute if it is a constraint, or its `VertexOrEdgeObjective(*)` attribute if it is an objective function, where * is the vertex or edge identification.")
 
-function _check(model::Optimizer, e, vi::MOI.VariableIndex, vertex::Int)
+function _check(model::GCSOptimizer, e, vi::MOI.VariableIndex, vertex::Int)
     # Check if a variable is associated to a vertex
     variable_vertex_or_edge = model.variable_vertex_or_edge[vi]
     if variable_vertex_or_edge != vertex
@@ -144,7 +135,7 @@ function _check(model::Optimizer, e, vi::MOI.VariableIndex, vertex::Int)
     end
 end
 
-function _check(model::Optimizer, e, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
+function _check(model::GCSOptimizer, e, vi::MOI.VariableIndex, edge::Tuple{Int,Int})
     # Check if a variable is associated to an edge or its incident vertices.
     variable_vertex_or_edge = model.variable_vertex_or_edge[vi]
     if variable_vertex_or_edge != edge[1] && variable_vertex_or_edge != edge[2] && variable_vertex_or_edge != edge
@@ -181,7 +172,7 @@ filter_attributes(attr::MOI.ObjectiveFunction) = false
 ###########################################################################################
 
 # Function barrier to work around the type instability when getting `F` and `S`
-function _add_constraints(dest::Optimizer, src::MOI.ModelLike, index_map, ::Type{F}, ::Type{S}) where {F,S}
+function _add_constraints(dest::GCSOptimizer, src::MOI.ModelLike, index_map, ::Type{F}, ::Type{S}) where {F,S}
     cis = MOI.get(src, MOI.ListOfConstraintIndices{F,S}()) # Get all the constraints of the type f in s, with f ∈ F a function and s ∈ S a set
     for ci in cis
         func = MOI.Utilities.map_indices(index_map, MOI.get(src, MOI.ConstraintFunction(), ci)) # get the function f, and map the x variables of the src model to the z variables of the dest model
@@ -225,15 +216,15 @@ end
 """
 Function used by the user to set the objective of a vertex or edge
 """
-function set_vertex_or_edge_objective(model::Model, v_e::VertexOrEdgeType, func::Union{Number, AbstractVariableRef, GenericAffExpr})
-    MOI.set(model, VertexOrEdgeObjective(v_e), moi_function(func))
-end
+# function set_vertex_or_edge_objective(model::JuMP.Model, v_e::VertexOrEdgeType, func::Union{Number, JuMP.AbstractVariableRef, JuMP.GenericAffExpr})
+#     MOI.set(model, VertexOrEdgeObjective(v_e), moi_function(func))
+# end
 
 """
 Construct the objective of the dest model, as the sum of the homogenized costs of the vertices and edges.
 If the cost associated to a vertex or edge is of the form ax + b, its homogenized version is az + by
 """
-function _set_objective(dest::Optimizer, src::MOI.ModelLike, index_map)
+function _set_objective(dest::GCSOptimizer, src::MOI.ModelLike, index_map)
     result = MOI.Utilities.zero(MOI.ScalarAffineFunction{Float64})
     for vertex_or_edge in [collect(Graphs.vertices(dest.graph)); collect(Graphs.edges(dest.graph))]
         v_e = vertex_or_edge isa Int ? vertex_or_edge : (Graphs.src(vertex_or_edge), Graphs.dst(vertex_or_edge))
@@ -263,7 +254,7 @@ end
 
 #################################################################################################################
 
-function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
+function MOI.copy_to(dest::GCSOptimizer, src::MOI.ModelLike)
     MOI.empty!(dest)
 
     # Create the z_v and z_e variables
@@ -332,7 +323,7 @@ MOI.is_set_by_optimize(::SubGraph) = true
 
 MOI.Utilities.map_indices(::MOI.Utilities.IndexMap, ::SubGraph, graph::Graphs.DiGraph) = graph
 
-function MOI.get(model::Optimizer, ::SubGraph)
+function MOI.get(model::GCSOptimizer, ::SubGraph)
     graph = Graphs.DiGraph(Graphs.nv(model.graph))
     for edge in Graphs.edges(model.graph)
         edge = (Graphs.src(edge), Graphs.dst(edge))
@@ -343,24 +334,47 @@ function MOI.get(model::Optimizer, ::SubGraph)
     return graph
 end
 
-####################################################################################################
-
-function JuMP.add_variable(v::Vertex, var...)
-    var_ref = JuMP.add_variable(v.model, var...)
-    MOI.set(v.model, VariableVertexOrEdge(), var_ref, v.vertex)
+####################################################################
+struct ShortestPathProblem
+    source::Int
+    target::Int
 end
 
-function JuMP.add_constraint(v::Vertex, con)
-    con_ref = JuMP.add_constraint(v.model, con)
-    MOI.set(v.model, ConstraintVertexOrEdge(), con_ref, v.vertex)
-end
+MOI.Utilities.map_indices(::Function, p::ShortestPathProblem) = p
 
-function JuMP.add_variable(e::Edge, var)
-    var_ref = JuMP.add_variable(e.model, var)
-    MOI.set(e.model, VariableVertexOrEdge(), var_ref, e.edge)
-end
-
-function JuMP.add_constraint(e::Edge, con)
-    con_ref = JuMP.add_constraint(e.model, con)
-    MOI.set(e.model, ConstraintVertexOrEdge(), con_ref, e.edge)
+function _constrain_admissible_subgraphs(model::GCSOptimizer, spp::ShortestPathProblem)
+    for v in Graphs.vertices(model.graph)
+        y = model.y[v]
+        inv = MOI.VariableIndex[model.y[(u, v)] for u in Graphs.inneighbors(model.graph, v)] # Get the y variables of the incoming edges to v
+        MOI.add_constraint( # sum of incoming edges to v + (v == src) = y_v
+            model.inner,
+            y - dot(ones(length(inv)), inv),
+            MOI.EqualTo(float(v == spp.source)),
+        )
+        outv = MOI.VariableIndex[model.y[(v, u)] for u in Graphs.outneighbors(model.graph, v)] # Get the y variables of the outgoing edges from v
+        MOI.add_constraint( # sum of outgoing edges to v + (v == target) = y_v
+            model.inner,
+            y - dot(ones(length(outv)), outv),
+            MOI.EqualTo(float(v == spp.target)),
+        )
+    end
+    MOI.add_constraint(model.inner, model.y[spp.source], MOI.EqualTo(1.)) # y_s = 1
+    MOI.add_constraint(model.inner, model.y[spp.target], MOI.EqualTo(1.)) # y_t = 1
+    for z in model.z
+        v_e = model.variable_vertex_or_edge[z]
+        if v_e isa Int # It is a vertex
+            inv = MOI.VariableIndex[model.z_v_e[(z, model.y[(u, v_e)])] for u in Graphs.inneighbors(model.graph, v_e)] # Get the z_e variables of the incoming edges to v_e
+            MOI.add_constraint( # z = sum of z_e of incoming edges to v + z * (v_e == src)
+                model.inner,
+                z - dot(ones(length(inv)), inv) - float(v_e == spp.source) * z,
+                MOI.EqualTo(0.0),
+            )
+            outv = MOI.VariableIndex[model.z_v_e[(z, model.y[(v_e, u)])] for u in Graphs.outneighbors(model.graph, v_e)] # Get the z_e variables of the outgoing edges from v_e
+            MOI.add_constraint( # z = sum of z_e of outgoing edges from v + z * (v_e == target)
+                model.inner,
+                z - dot(ones(length(outv)), outv) - float(v_e == spp.target) * z,
+                MOI.EqualTo(0.0),
+            )
+        end
+    end
 end

@@ -1,13 +1,8 @@
-import JuMP
-import Graphs
-
-include("MOI_wrapper.jl")
-
 struct GraphOfConvexSets{M <: JuMP.AbstractModel, T, G <: Graphs.AbstractGraph{T}} <: Graphs.AbstractGraph{T}
     model::M
     graph::G
 
-    GraphOfConvexSets(optimizer_factory<:MOI.AbstractOptimizer, g <: Graphs.AbstractGraph) = new(JuMP.Model(GCSOptimizer(optimizer_factory)), g)
+    GraphOfConvexSets(optimizer_factory::O, g::G) where {O <: MOI.OptimizerWithAttributes, T, G <: Graphs.AbstractGraph{T}} = new{JuMP.Model, T, G}(JuMP.Model(() -> GCSOptimizer(optimizer_factory)), g)
 end
 
 Graphs.nv(g::GraphOfConvexSets) = Graphs.nv(g.graph)
@@ -20,14 +15,14 @@ Graphs.rem_vertex!(g::GraphOfConvexSets, v::Integer) = Graphs.rem_vertex!(g.grap
 Graphs.ne(g::GraphOfConvexSets) = Graphs.ne(g.graph)
 Graphs.edgetype(g::GraphOfConvexSets) = Graphs.edgetype(g.graph)
 Graphs.edges(g::GraphOfConvexSets) = Graphs.edges(g.graph)
-Graphs.has_edge(g::GraphOfConvexSets, s<:Integer, d<:Integer) = Graphs.has_edge(g.graph, s, d)
-Graphs.add_edge!(g::GraphOfConvexSets, s<:Integer, d<:Integer) = Graphs.add_edge!(g.graph, s, d)
-Graphs.rem_edge!(g::GraphOfConvexSets, s<:Integer, d<:Integer) = Graphs.rem_edge!(g.graph, s, d)
+Graphs.has_edge(g::GraphOfConvexSets, s::I, d::I) where {I <: Integer} = Graphs.has_edge(g.graph, s, d)
+Graphs.add_edge!(g::GraphOfConvexSets, s::I, d::I) where {I <: Integer} = Graphs.add_edge!(g.graph, s, d)
+Graphs.rem_edge!(g::GraphOfConvexSets, s::I, d::I) where {I <: Integer} = Graphs.rem_edge!(g.graph, s, d)
 # TODO : Remove variables, constraints and cost associated to (s,d) when removing (s,d)
 
 Graphs.is_directed(g::GraphOfConvexSets) = Graphs.is_directed(g.graph)
-Graphs.inneighbors(g::GraphOfConvexSets, v<:Integer) = Graphs.inneighbors(g.graph, v)
-Graphs.outneighbors(g::GraphOfConvexSets, v<:Integer) = Graphs.outneighbors(g.graph, v)
+Graphs.inneighbors(g::GraphOfConvexSets, v::I) where {I <: Integer} = Graphs.inneighbors(g.graph, v)
+Graphs.outneighbors(g::GraphOfConvexSets, v::I) where {I <: Integer} = Graphs.outneighbors(g.graph, v)
 
 struct Vertex{M <: JuMP.AbstractModel, T<:Integer} <: JuMP.AbstractModel
     model::M
@@ -35,19 +30,21 @@ struct Vertex{M <: JuMP.AbstractModel, T<:Integer} <: JuMP.AbstractModel
 
     function Vertex(g::GraphOfConvexSets{M,T,G}, v::T) where {M <: JuMP.AbstractModel, T<:Integer, G<:Graphs.AbstractGraph{T}}
         Graphs.has_vertex(g,v) || throw(BoundsError("The graph g does not have a vertex $(v). You can add it through the add_vertex! method."))
-        return new(g.model, v)
+        return new{M,T}(g.model, v)
     end
 end
 
 function JuMP.add_variable(v::Vertex, var...)
     var_ref = JuMP.add_variable(v.model, var...)
     MOI.set(v.model, VariableVertexOrEdge(), var_ref, v.vertex)
+    return var_ref
 end
 
 function JuMP.add_constraint(v::Vertex, con)
     _check(v.model, con, con, v.vertex)
     con_ref = JuMP.add_constraint(v.model, con)
     MOI.set(v.model, ConstraintVertexOrEdge(), con_ref, v.vertex)
+    return con_ref
 end
 
 function JuMP.set_objective_function(v::Vertex, func)
@@ -61,18 +58,21 @@ struct Edge{M <: JuMP.AbstractModel, T<:Integer} <: JuMP.AbstractModel
 
     function Edge(g::GraphOfConvexSets{M,T,G}, s::T, d::T) where {M <: JuMP.AbstractModel, T <: Integer, G<: Graphs.AbstractGraph{T}}
         Graphs.has_edge(g,s,d) || throw(BoundsError("The graph g does not have an edge from $(s) to $(d). You can add it through the add_edge! method."))
+        return new{M,T}(g.model, (s,d))
     end
 end
 
 function JuMP.add_variable(e::Edge, var)
     var_ref = JuMP.add_variable(e.model, var)
     MOI.set(e.model, VariableVertexOrEdge(), var_ref, e.edge)
+    return var_ref
 end
 
 function JuMP.add_constraint(e::Edge, con)
     _check(e.model, con, con, e.edge)
     con_ref = JuMP.add_constraint(e.model, con)
     MOI.set(e.model, ConstraintVertexOrEdge(), con_ref, e.edge)
+    return con_ref
 end
 
 function JuMP.set_objective_function(e::Edge, func)
@@ -84,7 +84,7 @@ JuMP.set_objective_sense(g::GraphOfConvexSets, sense::MOI.OptimizationSense) = M
 
 # TODO : extract model associated to a given vertex/edge (see what has been done for the serializer)
 
-function Graphs.shortest_path(g::GraphOfConvexSets{M,T,G}, s::T, t::T) where {T}
+function shortest_path(g::GraphOfConvexSets{M,T,G}, s::T, t::T) where {M,T,G}
     Graphs.has_vertex(g, s) || Graphs.has_vertex(g, t) || throw(ArgumentError("The graph g does not have either vertex $(s), either vertex $(t)."))
 
     MOI.set_objective_sense(g.model, sense)
